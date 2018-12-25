@@ -550,6 +550,156 @@
 本次实验线路连接与实验一（\ref{sec:实验一线路连接}）相同，这里不再赘述。
 \subsubsection{程序实现}
 \paragraph{转速测定}
+根据表\ref{table:霍尔传感器与PWM}中霍尔传感器输入与转子磁场所在扇区关系，利用一路霍尔传感器IO输入跳变时产生的中断，在中断处理函数中读取定时器当前时间，并重新归零定时器，即可得到$\Delta t$。
+\par
+在实际程序中，采用IC1端口对应的中断处理函数进行转速的测定，根据CAB的霍尔传感器输入顺序，IC1对应B相霍尔传感器输入，因此当电机逆时针旋转时，选择当霍尔传感器输入为011时作为计算转子转过$\du{360}$电角度的起点；而当电机顺时针旋转时，选择当霍尔传感器输入为001时作为计算转子转过$\du{360}$电角度的起点。当每次进入中断时判断霍尔传感器输入值，若对应于当前电角度起点，则表示转子转过电角度一周，当转过电角度周数等于电机极对数时，读取出定时器数值，得到的即为$p\Delta t$。
+\par
+IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断程序流程图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	do/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,align = center,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,align = center,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\draw (0,0) node(begin)[be]{进入IC1中断};
+	\draw (begin)++(0,-\hbd) node(clearintflag)[do]{清除中断标志位};
+	\draw (clearintflag)++(0,-\hdd) node(readHall)[do]{读取霍尔传感器输入};
+	\draw (readHall)++(0,-\hdd) node(setindex)[do]{根据旋转方向标志位\\设置电角度起点};
+	\draw (setindex)++(0,-\hdi) node(ifindex)[ifl]{当前扇区\\=电角度起点？};
+	\draw (ifindex)++(0,-\hii) node(ifpole)[ifr]{极数计数器\\=电机极数？};
+	\draw (ifpole)++(0,-\hid) node(readtimer)[do]{读取timer当前值};
+	\draw (readtimer)++(0,-\hdd) node(cleartimer)[do]{timer归零};
+	\draw (cleartimer)++(0,-\hdd) node(ave)[do]{与上一次计时值取平均};
+	\draw (ave)++(0,-\hdd) node(setpole)[do]{极数计数器置1};
+	\draw (setpole)++(0,-\hbd) node(exit)[be]{退出中断};
+	
+	\foreach \x/\y in{begin/clearintflag,clearintflag/readHall,readHall/setindex,setindex/ifindex,ifindex/ifpole,ifpole/readtimer,readtimer/cleartimer,cleartimer/ave,ave/setpole,setpole/exit}
+		\draw [-Latex] (\x.south) -- (\y.north);
+		
+	\draw [-Latex] (ifindex.west) -- ++(-0.75,0)node(L){} |- (exit.west);
+	
+	\draw (cleartimer)++(4,0) node(polepp)[do]{极数计数器+1};
+	\draw [-Latex] (ifpole.east) -| (polepp.north);
+	\draw [-Latex] (polepp.south) |- (exit.east);
+	
+	\end{tikzpicture}
+	\caption{实验二IC1中断程序流程框图}\label{figure:实验二IC1中断程序流程图}
+\end{figure}
+
+\paragraph{闭环控制}
+利用IC1中断中得到的时间间隔值，计算出电机的实际转速，并与给定转速进行比较，将转速插值送入比例环节和积分环节得到占空比的控制输出量。由于处理器内的数字类型具有最大和最小值，因此还需要加入限幅判断环节，防止由于积分环节的累积效应，导致控制输出超过类型范围，导致程序崩溃。
+\par
+将闭环控制放在另一个定时器Timer1的中断内进行，每次进入T1中断，就进行依此PI环节的计算，并得到新的占空比输出值。Timer1中断的程序流程框图如图\ref{figure:实验二Timer1中断程序流程图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	do/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,align = center,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,align = center,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\draw (0,0) node(begin)[be]{进入T1中断};
+	\draw (begin)++(0,-\hbd)node(speed)[do]{计算实际速度};
+	\draw (speed)++(0,-\hdd)node(error)[do]{计算速度差};
+	\draw (error)++(0,-\hdd)node(p)[do]{计算比例环节输出};
+	\draw (p)++(0,-\hdd)node(i)[do]{计算积分环节输出\\与上一次结果累加};
+	\draw (i)++(0,-\hdi)node(i0)[ifl]{积分环节输出>0？};
+	\draw (i0)++(0,-\hii)node(imax)[ifr]{积分环节输出\\>32767？};
+	\draw (imax)++(0,-\hid)node(isetmax)[do]{积分环节输出设为32767};
+	\draw (isetmax)++(0,-\hdd)node(puti)[do]{保存本次积分结果};
+	\draw (puti)++(0,-\hdd)node(getduty)[do]{合并PI结果得到占空比};
+	\draw (getduty)++(0,-\hdi)node(d0)[ifr]{占空比>0？};
+	\draw (d0)++(0,-\hii)node(dmax)[ifl]{占空比>32767？};
+	\draw (dmax)++(0,-\hid)node(dsetmax)[do]{占空比设为32767};
+	\draw (dsetmax)++(0,-\hdd)node(setduty)[do]{将占空比置如PWM寄存器};
+	\draw (setduty)++(0,-\hdd)node(clearintflag)[do]{清除中断标志位};
+	\draw (clearintflag)++(0,-\hbd)node(exit)[be]{退出中断};
+	
+	\foreach \x/\y in {begin/speed,speed/error,error/p,p/i,i/i0,i0/imax,imax/isetmax,isetmax/puti,puti/getduty,getduty/d0,d0/dmax,dmax/dsetmax,dsetmax/setduty,setduty/clearintflag,clearintflag/exit}
+	\draw [-Latex] (\x.south) -- (\y.north);
+	
+	\draw ($(i0)!0.5!(imax)$)++(-5,0) node(iset0)[do]{积分环节输出设为0};
+	\draw [-Latex] (i0.west) -| (iset0.north);
+	\draw [-Latex] (iset0.south) |- (puti.west);
+	
+	\draw ($(d0)!0.5!(dmax)$)++(5,0) node (dset0)[do]{将占空比设为0};
+	\draw [-Latex] (d0.east) -| (dset0.north);
+	\draw [-Latex] (dset0.south) |- (setduty.east);
+	
+	\end{tikzpicture}
+	\caption{实验二Timer1中断程序流程图}\label{figure:实验二Timer1中断程序流程图}
+\end{figure}
+
+\paragraph{转速设定}
+本实验中，通过开发板上的电位器旋钮外设作为用户输入源，通过ADC采样得到电位器的分压值，等比例地换算为转速的设定值，在每次ADC中断中进行ADC采样结果与转速设定值的更新，ADC中断处理程序的流程图如\ref{figure:实验二ADC中断框图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	do/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\draw (0,0) node(begin)[be]{进入ADC中断};
+	\draw (begin) ++(0,-\hbd)node(getADC)[do]{获取ADC采样值};
+	\draw (getADC) ++(0,-\hdd)node(setduty)[do]{换算为转速设定值};
+	\draw (setduty) ++(0,-\hdd) node(clearintflag)[do]{清除中断标志位};
+	\draw (clearintflag) ++(0,-\hbd) node(exit)[be]{退出中断};
+	
+	\foreach \x/\y in {begin/getADC,getADC/setduty,setduty/clearintflag,clearintflag/exit}
+	\draw [-Latex] (\x.south) -- (\y.north);
+	
+	\end{tikzpicture}
+	\caption{实验二ADC中断框图}\label{figure:实验二ADC中断框图}
+\end{figure}
+
+\subsubsection{代码清单及注释}
+\paragraph{SensoredBLDC.c}
+\paragraph{Interrupts.c}
+\paragraph{Init.c}
+
+\section{跑马灯实验}
+\subsection{实验目标}
+\begin{enumerate}[a.,topsep=0pt]
+	\setlength{\itemsep}{-0.25\baselineskip}
+	\item 利用开发板上的LED外设，实现跑马灯。
+	\item 进一步熟悉PWM模块的控制与使用。
+\end{enumerate}
+\subsection{实验原理}
+\par
+在进行前两个实验时可以发现，当电机转速较低时，可以看到开发板上的LED跳变闪动，结合开发板电路原理图\ref{figure:LED原理图}，可知开发板上的LED灯由
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale= 0.3]{LED.png}
+	\caption{开发板LED部分原理图}\label{figure:LED原理图}
+\end{figure}
+
 
 \end{spacing}
 
