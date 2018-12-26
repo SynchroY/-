@@ -19,7 +19,7 @@
 \usetikzlibrary{shapes.symbols}
 \usetikzlibrary{shapes.geometric}
 \usetikzlibrary{shapes.arrows}
-\usepackage[american inductors]{circuitikz}
+\usepackage[american]{circuitikz}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{multirow}
@@ -679,6 +679,7 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 	\caption{实验二ADC中断框图}\label{figure:实验二ADC中断框图}
 \end{figure}
 
+\FloatBarrier
 \subsubsection{代码清单及注释}
 \paragraph{SensoredBLDC.c}
 \paragraph{Interrupts.c}
@@ -693,13 +694,387 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 \end{enumerate}
 \subsection{实验原理}
 \par
-在进行前两个实验时可以发现，当电机转速较低时，可以看到开发板上的LED跳变闪动，结合开发板电路原理图\ref{figure:LED原理图}，可知开发板上的LED灯由
+在进行前两个实验时可以发现，当电机转速较低时，可以看到开发板上的LED跳变闪动，结合开发板电路原理图\ref{figure:LED原理图}，可知开发板上的六枚LED采用共阴极接地，阳极分别与六路PWM输出相接，因此当PWM输出为高电平时，既可以点亮对应的LED。
+\par
+结合之前进行电机旋转控制时PWM模块的控制策略，通过OVDCON寄存器可以方便地选通需要的PWM输出，而使其余PWM输出无效，因此在本实验中也可以采用相同的控制方式，对应于跑马灯的六种状态，建立OVDCON寄存器值表，经过一定延时依次将表中数值放入OVDCON中，即可完成跑马灯控制。
 \begin{figure}[h]
 	\centering
 	\includegraphics[scale= 0.3]{LED.png}
 	\caption{开发板LED部分原理图}\label{figure:LED原理图}
 \end{figure}
+\subsection{实验过程}
+\subsubsection{线路连接}
+\par
+本实验中PWM输出作为跑马灯的控制，因此不再需要接入电机三相电源线和霍尔传感器输出线，只需要为开发板接入直流电源即可。
+\subsubsection{程序实现}
+\par
+令LED按照D10、D11~D15的顺序依次点亮，此时六种状态与OVDCON寄存器值的关系如表\ref{table:LED状态与OVDCON关系}所示。
+\begin{table}[h]
+	\centering
+	\caption{LED状态与OVDCON寄存器的对应关系}\label{table:LED状态与OVDCON关系}
+	\begin{tabular}{>{\centering\arraybackslash}p{7em}>{\centering\arraybackslash}p{4em}>{\centering\arraybackslash}p{4em}>{\centering\arraybackslash}p{4em}>{\centering\arraybackslash}p{7em}}
+		\toprule[1pt]
+		点亮的LED& PWM1&PWM2&PWM3&OVDCON值\\
+		\midrule
+		D10& L&0&0&0x0100\\
+		D11& H&0&H&0x0200\\
+		D12& 0&L&0&0x0400\\
+		D13& 0&H&0&0x0800\\
+		D14& 0&0&L&0x1000\\
+		D15& 0&0&H&0x2000\\
+		\bottomrule[1pt]
+	\end{tabular}
+\end{table}
+\par
+在主程序循环中，每经过一段延时时间，就依次改变OVDCON表的值，并将新的值放入OVDCON寄存器中，由此即可实现跑马灯，程序流程图如图\ref{figure:实验三主程序流程图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	do/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,align = center,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,align = center,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\draw (0,0) node(begin)[be]{进入主程序};
+	\draw (begin)++(0,-\hbd) node(init)[do]{模块初始化};
+	\draw (init)++(0,-\hdd) node(clearindex)[do]{OVDCON表指针清零};
+	\draw (clearindex)++(0,-\hdi) node(ifindex)[ifl]{指针<6？};
+	\draw (ifindex)++(0,-\hid) node(fresh)[do]{更新OVDCON寄存器值};
+	\draw (fresh)++(0,-\hdd) node(wait)[do]{等待延时};
+	\draw (wait)++(0,-\hdd) node(inc)[do]{指针+1};
+	
+	\foreach \x/\y in {begin/init,init/clearindex,clearindex/ifindex,ifindex/fresh,fresh/wait,wait/inc}
+	\draw [-Latex] (\x.south) -- (\y.north);
+	\draw [-Latex] (inc.south) |- ++(5,-0.5) |- ($(clearindex)!0.5!(ifindex)$);
+	
+	\draw (ifindex.west) ++(-3,0) node(clear)[do]{指针归零};
+	\draw [-Latex] (ifindex.west) -- (clear.east);
+	\draw [-Latex] (clear.south) |- (fresh.west);
+	\end{tikzpicture}
+	\caption{实验三主程序流程图}\label{figure:实验三主程序流程图}
+\end{figure}
 
+
+\section{UART通信}
+\subsection{实验目标}
+\begin{enumerate}[a.,topsep=0pt]
+	\setlength{\itemsep}{-0.25\baselineskip}
+	\item 利用UART模块实现上位机（PC）与开发板之间的通讯。
+	\item 实现通过上位机向处理器发送调速指令完成调速的功能。
+	\item 实现处理器向上位机定时发送当前速度功能，观察开闭环调速特性。
+\end{enumerate}
+\subsection{实验原理}
+\subsubsection{BLDC调速系统的动态特性}
+\paragraph{无刷直流电机的动态特性}
+对无刷直流电机，可以将其定子绕组等效为绕组电阻、绕组电感与反电动势的串联，如图\ref{firgue:定子绕组等效电路}所示。由此可得定子绕组的微分方程：
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	dummynode/.style={outer sep=-1,inner sep=-1}]
+	\draw (0,0)node(inp)[ocirc]{} -- ++(2,0) to[R=$R$] ++ (2,0)node(RE)[dummynode]{}  ++(4,0)node(UN)[dummynode]{} to[european voltage source = $E$] ++(0,-2)node(US)[dummynode]{} -- (US-|inp) node(inm)[ocirc]{};
+	\draw (UN) to[L,a=$L$] (RE);
+	\path (inp) -- (inm) node[pos=0.1]{$+$} node[pos=0.5]{$U_{d}$} node[pos=0.9]{$-$};
+	\end{tikzpicture}
+	\caption{定子绕组等效电路}\label{firgue:定子绕组等效电路}
+\end{figure}
+\begin{shrinkeq}{-1.5ex}{-2.5ex}
+	\begin{align}
+	U_d = RI_d+L\frac{\diff I_d}{\diff t}+E
+	\end{align}
+\end{shrinkeq}
+式中，$I_d$为定子绕组电流，$E$为电枢反应产生的反电动势，在电机的结构确定后，与转速成正比：
+\begin{shrinkeq}{-1.5ex}{-2.5ex}
+	\begin{align}
+	E = C_{e}n
+	\end{align}
+\end{shrinkeq}
+\par
+而对与转子，可以列写出电磁转矩$T_e$、负载转矩$T_L$和转轴飞轮矩$GD^2$组成的动力学方程：
+\begin{shrinkeq}{-1.5ex}{-2.5ex}
+	\begin{align}
+	T_e-T_L = \frac{GD^2}{375}\frac{\diff n}{\diff t}
+	\end{align}
+\end{shrinkeq}
+而电磁转矩又于电枢电流成正比：
+\begin{shrinkeq}{-1.5ex}{-2.5ex}
+	\begin{align}
+	T_e = C_mI_d
+	\end{align}
+\end{shrinkeq}
+设$T_l$为定子绕组的时间常数，$T_m$为传动系统的动力学时间常数：
+\begin{shrinkeq}{-1ex}{-1ex}
+	\begin{align}
+	T_l&=\frac{L}{R}\\
+	T_m&=\frac{GD^2R}{375C_eC_m}
+	\end{align}
+\end{shrinkeq}
+将上述方程改写为复频域形式，整理后得到无刷直流电机的动态特性框图如图\ref{figure:无刷直流电机动态特性框图}所示：
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	sum/.pic = {
+		\coordinate (-north) at (0,0.2);
+		\coordinate (-east) at (0.2,0);
+		\coordinate (-south) at (0,-0.2);
+		\coordinate (-west) at (-0.2,0);
+		\coordinate (-o) at (0,0);		
+		\draw (0,0) circle [radius = 0.2];
+		\draw (-north) -- (-south);
+		\draw (-east) -- (-west);},
+	p/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\pic (sum1) at (0,0) {sum};
+	\draw (sum1-o)++(2,0) node(U-I)[p]{$\dfrac{\sfrac{1}{R}}{T_ls+1}$} ++(3,0) pic (sum2){sum} ++(2,0) node(I-E)[p]{$\dfrac{R}{T_ms}$} ++(3,0) node(E-n)[p]{$\dfrac{1}{C_e}$};
+	
+	\draw [-Latex] (sum1-west)++(-1.5,0) -- (sum1-west) node[pos=0.2,above]{$U_d\left(s\right)$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum1-east) -- (U-I.west);
+	\draw [-Latex] (U-I.east) -- (sum2-west) node[pos=0.3,above]{$I_d\left(s\right)$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum2-east) -- (I-E.west);
+	\draw [-Latex] (I-E.east) -- (E-n.west) node(E)[pos=0.5,above]{$E$};
+	\draw [-Latex] (E-n.east) -- ++(1.5,0) node[pos=0.6,above]{$n$};
+	\draw [-Latex] (E) -- ++(0,-1.75) -| (sum1-south) node[pos=0.9,right]{$-$};
+	\draw [-Latex] (sum2-north) ++(0,1.5) -- (sum2-north) node[pos=0.2,right]{$I_L\left(s\right)$} node[pos=0.9,right]{$-$};
+	
+	\end{tikzpicture}
+	\caption{无刷直流电机动态特性框图}\label{figure:无刷直流电机动态特性框图}
+\end{figure}
+进一步化简框图，打开闭环并将负载电流移到输入端得到如图\ref{figure:简化的无刷直流电机动态特性框图}所示。可已看出，当无刷直流电机处于理想空载（$I_L=0$）时，无刷直流电机的转速与输入电压构成一个二阶系统。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	sum/.pic = {
+		\coordinate (-north) at (0,0.2);
+		\coordinate (-east) at (0.2,0);
+		\coordinate (-south) at (0,-0.2);
+		\coordinate (-west) at (-0.2,0);
+		\coordinate (-o) at (0,0);		
+		\draw (0,0) circle [radius = 0.2];
+		\draw (-north) -- (-south);
+		\draw (-east) -- (-west);},
+	p/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\pic (sum1) at (0,0) {sum};
+	\draw (sum1-o)++(4,0) node(p)[p]{$\dfrac{\sfrac{1}{C_e}}{T_mT_ls^2+T_ms+1}$};
+	
+	\draw [-Latex] (sum1-west)++(-2,0) -- (sum1-west) node[pos=0.2,above]{$U_d\left(s\right)$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum1-east) -- (p.west);
+	\draw [-Latex] (p.east) -- ++(2,0) node[pos=0.5,above]{$n\left(s\right)$};
+	\draw (sum1-o)++(0,1.5) node(p2)[p]{$R\left(T_ls+1\right)$};
+	\draw [-Latex] (p2.north)++(0,1.5) -- (p2.north) node[pos=0.3,right]{$I_L\left(s\right)$};
+	\draw [-Latex] (p2.south) -- (sum1-north) node[pos=0.9,right]{$-$};
+	
+	\end{tikzpicture}
+	\caption{简化的无刷直流电机动态特性框图}\label{figure:简化的无刷直流电机动态特性框图}
+\end{figure}
+\paragraph{开环控制系统调速特性}
+对于数字DSP处理器和MOSFET构成的调速系统而言，处理器的采样频率和MOSFET的开关频率往往在$10\kHz$以上，控制系统的时间常数相比于具有较大感性与惯性的电机而言非常小，可以忽略不计，其速度给定$n^{*}$与电机电压$U_{d}$间即为一简单的比例环节。因此对于开环控制系统的动态框图即如图\ref{figure:简化的无刷直流电机动态特性框图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	sum/.pic = {
+		\coordinate (-north) at (0,0.2);
+		\coordinate (-east) at (0.2,0);
+		\coordinate (-south) at (0,-0.2);
+		\coordinate (-west) at (-0.2,0);
+		\coordinate (-o) at (0,0);		
+		\draw (0,0) circle [radius = 0.2];
+		\draw (-north) -- (-south);
+		\draw (-east) -- (-west);},
+	p/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\pic (sum1) at (0,0) {sum};
+	\draw (sum1-o) ++(-3,0) node(n-U)[p]{$K_n$};
+	\draw (sum1-o)++(4,0) node(p)[p]{$\dfrac{\sfrac{1}{C_e}}{T_mT_ls^2+T_ms+1}$};
+	
+	\draw [-Latex] (n-U.west)++(-2,0) -- (n-U.west) node[pos=0.5,above]{$n^{*}\left(s\right)$};
+	\draw [-Latex] (n-U.east) -- (sum1-west) node[pos=0.5,above]{$U_d\left(s\right)$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum1-east) -- (p.west);
+	\draw [-Latex] (p.east) -- ++(2,0) node[pos=0.5,above]{$n\left(s\right)$};
+	\draw (sum1-o)++(0,1.5) node(p2)[p]{$R\left(T_ls+1\right)$};
+	\draw [-Latex] (p2.north)++(0,1.5) -- (p2.north) node[pos=0.3,right]{$I_L\left(s\right)$};
+	\draw [-Latex] (p2.south) -- (sum1-north) node[pos=0.9,right]{$-$};
+	
+	\end{tikzpicture}
+	\caption{开环调速系统动态特性框图}\label{figure:开环控制系统特性框图}
+\end{figure}
+\par
+可以看到，在开环调节下，负载电流直接作为干扰量进入系统中，并且无法得到抑制，因此将造成实际的转速将随着负载电流的变化而波动，绝大部分情况下都将与给定转速存在差值，并且由于电机具有一定的惯性，时间常数较大，电机的动态响应速度也较慢。
+
+\paragraph{闭环控制系统调速特性}
+闭环调速系统中引入了反馈机制，并通过PI调节实现转速的无静差控制，当控制系统两次采样、计算间隔远小于电机的时间常数时，可以认为其为连续系统，PI环节的传递函数可以写为：
+\begin{shrinkeq}{-1ex}{-1ex}
+	\begin{align}
+	d\left(s\right)&=\left(K_P+\frac{K_I}{s}\right)\Delta n\left(s\right)\\
+	U_{d}\left(s\right)&=K_s d\left(s\right)
+	\end{align}
+\end{shrinkeq}
+式中，$d$为控制器输出的占空比，$K_s$为H桥将占空比转化为输出平均电压的比例系数。由此可以得到闭环系统的动态特性框图如图\ref{figure:闭环调速系统特性框图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	sum/.pic = {
+		\coordinate (-north) at (0,0.2);
+		\coordinate (-east) at (0.2,0);
+		\coordinate (-south) at (0,-0.2);
+		\coordinate (-west) at (-0.2,0);
+		\coordinate (-o) at (0,0);		
+		\draw (0,0) circle [radius = 0.2];
+		\draw (-north) -- (-south);
+		\draw (-east) -- (-west);},
+	p/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\pic (sum1) at (0,0) {sum};
+	\draw (sum1-o) ++(2,0) node(PI)[p]{$K_{P}+\dfrac{K_{I}}{s}$} ++(2.5,0) node(Ks)[p]{$K_s$} ++(2,0) pic(sum2){sum} ++(2.5,0) node(p)[p]{$\dfrac{\sfrac{1}{C_e}}{T_mT_ls^2+T_ms+1}$};
+	
+	\draw [-Latex] (sum1-west) ++(-1.5,0) --(sum1-west) node[pos=0.5,above]{$n^{*}\left(s\right)$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum1-east) -- (PI.west) node[pos=0.5,above]{$\Delta n$};
+	\draw [-Latex] (PI.east) -- (Ks.west) node[pos=0.5,above]{$d$};
+	\draw [-Latex] (Ks.east) -- (sum2-west) node[pos=0.5,above]{$U_d$} node[pos=0.9,above]{$+$};
+	\draw [-Latex] (sum2-east) -- (p.west);
+	\draw [-Latex] (p.east) -- ++(1.5,0) node(out)[pos=0.5,above]{$n\left(s\right)$};
+	\draw [-Latex] (out) -- ++(0,-2) -| (sum1-south) node[pos=0.9,right]{$-$};
+	
+	\draw (sum2-o)++(0,1.5) node(p2)[p]{$R\left(T_ls+1\right)$};
+	\draw [-Latex] (p2.north)++(0,1.5) -- (p2.north) node[pos=0.3,right]{$I_L\left(s\right)$};
+	\draw [-Latex] (p2.south) -- (sum2-north) node[pos=0.9,right]{$-$};
+	
+
+	\end{tikzpicture}
+	\caption{闭环调速系统动态特性框图}\label{figure:闭环调速系统特性框图}
+\end{figure}
+
+\par
+当忽略负载电流（即认为理想空载）时，系统的闭环传递函数可以写为：
+\begin{shrinkeq}{-1ex}{-1ex}
+	\begin{align}
+	G\left(s\right) = \frac{K_PK_ss+K_IK_s}{C_eT_mT_ls^3+C_eT_ms^2+\left(C_e+K_PK_s\right)s+K_IK_s}
+	\end{align}
+\end{shrinkeq}
+而对于负载电流$I_L\left(s\right)$而言，其闭环传递函数为：
+\begin{shrinkeq}{-1ex}{-1ex}
+	\begin{align}
+	N\left(s\right) = \frac{RT_ls^2+Rs}{-C_eT_mT_ls^3-C_eT_ms^2+\left(K_PK_s-C_e\right)s+K_IK_s}
+	\end{align}
+\end{shrinkeq}
+则根据终值定理，干扰项产生的输出最终将趋于零，即被闭环系统抑制，在稳态时达到实际转速等于给定转速的效果。
+\subsubsection{自定义通讯缓存区}
+\par
+\dsp 的UART模块内置了4个字节深度的发送队列TX\_FIFO和接收队列RX\_FIFO，并能够设置TX中断和RX中断的出发条件与对应队列当前占用字节数的关系，但是由于队列长度短，造成在实际使用过程中的灵活度不够。例如在发送长度超过四位的字符串时，整个程序必须在发送完四个字节后进入阻塞状态，直到判断到TX\_FIFO中有新的空位后再继续发送，导致处理器的效率降低；发过来在接受字符过程中，则当需要接收的指令长度超过四个字节时也需要让程序停留在接收字符的进程中，一旦有字符进入FIFO就将其及时取出，以免FIFO溢出，导致接收的错误。
+\par
+因此，在程序中重新开辟了两块空间作为TX和RX的缓存区，并编写配套的字符与字符串操作函数，实现对字符发送与接收任务的完全接管，直接与对应TX中断与RX中断进行交互。其中，RX缓存区采用堆栈的数据格式，当RX\_FIFO接收到字符产生RX中断时，自动将FIFO中的内容压入堆栈，当发现指令结束字符时，再将堆栈中内容弹出，进行对指令的判断和后续操作。而TX缓存区采用循环队列结构，当TX缓存区首尾指针相等，即队列为空时，TX中断处于关闭状态，当有内容需要发送时，将发送内容一次性全部写入缓存区，此时，TX中断将被打开，并自动将缓存区内内容依次放入FIFO中，直到缓存区再次为空，TX中断关闭，而其他程序不要阻塞等待发送过程，提高了处理器效率，此外，当一次写入的字符串长度过大，超过缓存区长度时，将自动发出预警信息，提示开发者适当增加缓存区长度。
+
+\subsection{实验过程}
+\subsubsection{线路连接}
+\par
+本实验中的线路连接与实验一与实验二\ref{sec:实验一线路连接}的线路连接相同，此外，使用UART功能与上位机进行通讯时，还需要确保开发板上的两个跳帽安装在了正确的位置。根据开发板线路原理图\ref{figure:跳帽原理图}所示，将跳帽安装在UART对应位置。
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale= 0.3]{JP.png}
+	\caption{开发板跳帽连接部分原理图}\label{figure:跳帽原理图}
+\end{figure}
+
+\paragraph{程序实现}
+通过\dsp 的UART模块，来实现开发板向上位机发送电机转速，上位机向开发板发送控制指令的功能，该部分主要的逻辑过程在UART的RX中断处理函数中完成：进入中断后，开始从RX\_FIFO中读取字符，并对读取到的字符进行判断是否为换行字符（即一条指令的结束字符），当判断到指令结束时，从RX缓存区中取出之前存储的整条指令，按照正则表达式对指令中的指令名称和参数进行提取，并完成对应的速度返回、速度设定和恢复到ADC电位器调速模式等操作。此外，还有输入回显、退格键删除输入等交互功能。程序流程框图如\ref{figure:实验四RX中断程序流程图}所示。
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	do/.style = {rectangle,minimum size = 6mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
+	ifl/.style = {shape aspect = 3,diamond,draw,align = center,label = -65:Y,label = 170:N,inner xsep = 5pt,inner ysep = 0pt},
+	ifr/.style = {shape aspect = 3,diamond,draw,align = center,label = -115:Y,label = 10:N,inner xsep = 5pt,inner ysep = 0pt},]
+	\def\hbb{1.25};
+	\def\hbd{1.25};
+	\def\hdd{1.25};
+	\def\hbi{2};
+	\def\hdi{2};
+	\def\hii{2.25};
+	\def\hib{1.75};
+	\def\hid{1.75};
+	
+	\draw (0,0) node(begin)[be]{进入RX中断};
+	\draw (begin)++(0,-\hbi) node(ifempty)[ifl]{RX\_FIFO未空？};
+	\draw (ifempty)++(0,-\hid) node(read)[do]{读取一个字符};
+	\draw (read)++(0,-\hdd) node(echo)[do]{指令回显};
+	\draw (echo)++(0,-\hdi) node(ifreturn)[ifr]{读取字符='$\backslash$r'？};
+	\draw (ifreturn)++(0,-\hid) node(addend)[do]{向缓存区写入空字符作为结束标志};
+	\draw (addend)++(0,-\hdd) node(readline)[do]{从缓存区取出整条指令};
+	\draw (readline)++(0,-\hdd) node(scan)[do]{利用sscanf()函数解析指令};
+	\draw (scan)++(0,-\hdd) node(handle)[do]{完成对应处理};
+	\draw (handle)++(0,-\hdd) node(flash)[do]{清空RX缓存区};
+	\draw (flash)++(0,-\hdd) node(intflag)[do]{清除中断标志位};
+	\draw (intflag)++(0,-\hbd) node(exit)[be]{退出中断};
+	
+	
+	\foreach \x/\y in {begin/ifempty,ifempty/read,read/echo,echo/ifreturn,ifreturn/addend,addend/readline,readline/scan,scan/handle,handle/flash,flash/intflag,intflag/exit}
+	\draw [-Latex] (\x.south) -- (\y.north);
+	
+	\draw [-Latex] (ifempty.west) -- ++(-2,0) |- (exit.west);
+	\draw (addend) ++(6,0) node(put)[do]{将字符写入缓存区};
+	\draw (put)++(0,-\hdi) node(ifback)[ifr]{字符='$\backslash$b'？};
+	\draw (ifback)++(0,-\hid) node(reback)[do]{回显删除};
+	\draw (reback)++(0,-\hdd) node(delete)[do]{从缓存区删除字符};
+	\draw [-Latex] (ifreturn.east) -| (put.north);
+	\foreach \x/\y in {put/ifback,ifback/reback,reback/delete}
+	\draw [-Latex] (\x.south) -- (\y.north);
+	\draw [-Latex] (ifback.east) -- ++(2,0) |- (exit.east);
+	\draw [-Latex] (delete.south) -- (delete.south|-exit.east);
+	
+	\end{tikzpicture}
+	\caption{实验四RX中断程序流程框图}\label{figure:实验四RX中断程序流程图}
+\end{figure}
+\subsubsection{代码清单及注释}
+\paragraph{SensoredBLDC.c}
+\paragraph{Interrupts.c}
+\paragraph{Init.c}
+\paragraph{sci\_buffer.c}
 
 \end{spacing}
 
