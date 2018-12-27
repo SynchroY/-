@@ -34,6 +34,10 @@
 \usepackage{graphicx}
 \graphicspath{{screen/}}
 \usepackage{pythonhighlight}
+\usepackage{listings}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+\lstset{language=C,basicstyle =\footnotesize,tabsize=4,showspaces=false,showstringspaces=false, keywordstyle=\color{blue},commentstyle=\color{green!60!black},xleftmargin=3em,stringstyle=\color{mauve}, breaklines=true
+	 }
 
 \renewcommand\theequation{\arabic{equation}}
 \renewcommand{\contentsname}{}
@@ -149,6 +153,7 @@
 	\vspace{1em}
 	\hspace{2em}学号\hspace{1em} \underline{\hspace{2.75em}515021910641\hspace{2.75em}}\\
 	\vspace{1em}
+	
 	
 	\vspace{6em}
 	\today
@@ -307,7 +312,7 @@
 此外，将开发板上的RJ45接口与仿真器连接，再将仿真器与计算机的USB口连接，即完成了调试通信部分连接。
 \subsubsection{程序实现}
 \paragraph{定子磁场的产生}
-通过处理器的六路PWM波输出控制三组H桥上下桥臂的六个开关管即可实现对A、B、C三相电压的控制，从而实现定子绕组电流方向控制，产生每个时刻需要的定子磁场组合。\dsp 的PWM模块提供了OVDCON寄存器来方便使用者再不改变每路PWM输出的其他配置（如占空比）的情况下直接控制每路PWM信号的输出与否。
+通过处理器的六路PWM波输出控制三组H桥上下桥臂的六个开关管即可实现对A、B、C三相电压的控制，从而实现定子绕组电流方向控制，产生每个时刻需要的定子磁场组合。\dsp 的PWM模块提供了OVDCON寄存器来方便使用者再不改变每路PWM输出的其他配置（如占空比）的情况下直接控制每路PWM信号的输出情况。
 \begin{figure}[h]
 	\centering
 	\includegraphics[scale=0.45]{OVDCON.png}
@@ -321,16 +326,23 @@
 		\toprule[1pt]
 		定子磁场组合& PWM1&PWM2&PWM3&OVDCON值\\
 		\midrule
-		$A^{+}B^{-}$& H&L&0&0x0204\\
-		$B^{-}C^{+}$& 0&L&H&0x2004\\
-		$A^{-}C^{-}$& L&0&H&0x2001\\
-		$A^{-}B^{+}$& L&H&0&0x0801\\
-		$B^{+}C^{-}$& 0&H&L&0x0810\\
-		$A^{+}C^{-}$& H&0&L&0x0210\\
+		$A^{+}B^{-}$& PWM&L&0&0x0204\\
+		$B^{-}C^{+}$& 0&L&PWM&0x2004\\
+		$A^{-}C^{-}$& L&0&PWM&0x2001\\
+		$A^{-}B^{+}$& L&PWM&0&0x0801\\
+		$B^{+}C^{-}$& 0&PWM&L&0x0810\\
+		$A^{+}C^{-}$& PWM&0&L&0x0210\\
 		零磁场& 0&0&0& 0x0000\\
 		\bottomrule[1pt]
 	\end{tabular}
 \end{table}
+\par
+最终在输出的波形如图\ref{figure:PWM模块输出波形}所示，属于H\_PWM-L\_ON型调制方式。从而可以通过调节占空比，改变定子绕组的两端电压，从而调节转速。
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.45]{PWM.png}
+	\caption{PWM模块输出波形}\label{figure:PWM模块输出波形}
+\end{figure}
 
 \paragraph{转子位置检测}
 在任意时刻读取三路霍尔传感器的值即可得到该时刻转子磁场所在的扇区，再根据当前需要的旋转方向由图\ref{figure:扇区划分}和图\ref{figure:霍尔传感器检测转子磁场位置}选择需要的定子磁场组合，再根据表\ref{table:定子磁场与OVDCON关系}为OVDCON设置上相应的值即可完成电机运行的控制。在程序中，三相霍尔传感器的输入在寄存器中由高位到低位按照CAB的顺序依次排列，由此可得到控制电机旋转的逻辑关系如表\ref{table:霍尔传感器与PWM}所示。
@@ -475,8 +487,14 @@
 \end{figure}
 \subsubsection{代码清单及注释}
 \paragraph{SensoredBLDC.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/1/SensoredBLDC.c}
+\end{spacing}
+
 \paragraph{Interrupts.c}
-\paragraph{Init.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/1/Interrupts.c}
+\end{spacing}
 
 \section{BLDC闭环控制}
 \subsection{实验目标}
@@ -647,10 +665,10 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 	\end{tikzpicture}
 	\caption{实验二Timer1中断程序流程图}\label{figure:实验二Timer1中断程序流程图}
 \end{figure}
-
+\clearpage
 \paragraph{转速设定}
 本实验中，通过开发板上的电位器旋钮外设作为用户输入源，通过ADC采样得到电位器的分压值，等比例地换算为转速的设定值，在每次ADC中断中进行ADC采样结果与转速设定值的更新，ADC中断处理程序的流程图如\ref{figure:实验二ADC中断框图}所示。
-\begin{figure}[h]
+\begin{figure}[H]
 	\centering
 	\begin{tikzpicture}[
 	be/.style = {rectangle,minimum size = 6mm,rounded corners = 3mm,draw,align = center,inner xsep = 5pt,inner ysep = 5pt},
@@ -679,11 +697,17 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 	\caption{实验二ADC中断框图}\label{figure:实验二ADC中断框图}
 \end{figure}
 
-\FloatBarrier
+
 \subsubsection{代码清单及注释}
 \paragraph{SensoredBLDC.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/2/SensoredBLDC.c}
+\end{spacing}
+
 \paragraph{Interrupts.c}
-\paragraph{Init.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/2/Interrupts.c}
+\end{spacing}
 
 \section{跑马灯实验}
 \subsection{实验目标}
@@ -761,7 +785,11 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 	\end{tikzpicture}
 	\caption{实验三主程序流程图}\label{figure:实验三主程序流程图}
 \end{figure}
-
+\subsubsection{代码清单及注释}
+\paragraph{SensoredBLDC.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/3/SensoredBLDC.c}
+\end{spacing}
 
 \section{UART通信}
 \subsection{实验目标}
@@ -1070,13 +1098,31 @@ IC1中断处理函数的程序流程框图如图\ref{figure:实验二IC1中断�
 	\end{tikzpicture}
 	\caption{实验四RX中断程序流程框图}\label{figure:实验四RX中断程序流程图}
 \end{figure}
+\clearpage
 \subsubsection{代码清单及注释}
 \paragraph{SensoredBLDC.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/4/SensoredBLDC.c}
+\end{spacing}
 \paragraph{Interrupts.c}
-\paragraph{Init.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/4/Interrupts.c}
+\end{spacing}
+\paragraph{sci\_buffer.h}
+\begin{spacing}{1}
+	\lstinputlisting{code/4/sci_buffer.h}
+\end{spacing}
 \paragraph{sci\_buffer.c}
+\begin{spacing}{1}
+	\lstinputlisting{code/4/sci_buffer.c}
+\end{spacing}
 
 \end{spacing}
+
+\section*{心得与体会}
+\addcontentsline{toc}{section}{心得与体会}
+\par
+通过本次课程的学习，对于无刷直流电机的运行原理，控制电路和控制方法有了较为完整的理解与掌握。通过四个循序渐进的实验内容，逐步完成无刷直流电机的启动运行到闭环调速再到通讯，对无刷直流高效率、结构简单、调速性能优秀的特点有了更为直观的认识与体会，也在结合Datasheet、User Guide的学习、摸索中锻炼了自己解决问题的能力。在此，要感谢同组同学在课程过程中的相互合作、共同进步。也要感谢助教每次课都耐心地为我们准备实验器材，在我们遇到问题时，即使已经过了下课时间，也依然认真帮我们分析问题，寻找解决途径。也要感谢朱莉老师为我们细致地分析讲解无刷直流电机的原理与控制方法，为我们提供了这一个学习与动手实践的平台，并从中获益匪浅。
 
 
 	
